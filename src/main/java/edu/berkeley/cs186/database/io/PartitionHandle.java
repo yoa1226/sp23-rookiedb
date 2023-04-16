@@ -17,6 +17,7 @@ import static edu.berkeley.cs186.database.io.DiskSpaceManager.PAGE_SIZE;
 import static edu.berkeley.cs186.database.io.DiskSpaceManagerImpl.DATA_PAGES_PER_HEADER;
 import static edu.berkeley.cs186.database.io.DiskSpaceManagerImpl.MAX_HEADER_PAGES;
 
+//map to file of disk
 class PartitionHandle implements AutoCloseable {
     // Lock on the partition.
     ReentrantLock partitionLock;
@@ -314,7 +315,9 @@ class PartitionHandle implements AutoCloseable {
         // the master page, and then take the header index times the number
         // of data pages per header plus 1 to account for the header page
         // itself (in the above example this coefficient would be 5)
+        //1 is the header page
         long spacingCoeff = DATA_PAGES_PER_HEADER + 1; // Promote to long
+        //1 is the master page
         return (1 + headerIndex * spacingCoeff) * PAGE_SIZE;
     }
 

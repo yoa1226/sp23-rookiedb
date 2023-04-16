@@ -78,45 +78,119 @@ class InnerNode extends BPlusNode {
 
     // Core API ////////////////////////////////////////////////////////////////
     // See BPlusNode.get.
+    //  b,  c
+    // e, f, g
+
     @Override
     public LeafNode get(DataBox key) {
-        // TODO(proj2): implement
+        //suppose that: keys.size() + 1 = children.size()
+        Long targetChildren = children.get(doGet(key));
+        BPlusNode bPlusNode = BPlusNode.fromBytes(metadata, bufferManager, treeContext, targetChildren);
+        return bPlusNode.get(key);
+    }
 
-        return null;
+    private int doGet(DataBox key) {
+
+        int bsIdx = Arrays.binarySearch(keys.toArray(), key);
+        //hit, target children index = bsIdx + 1
+        if(bsIdx >= 0) return bsIdx + 1;
+        //insertion point
+        return  -(bsIdx + 1);
     }
 
     // See BPlusNode.getLeftmostLeaf.
     @Override
     public LeafNode getLeftmostLeaf() {
-        assert(children.size() > 0);
-        // TODO(proj2): implement
+        assert (children.size() > 0);
+        BPlusNode bPlusNode = BPlusNode.fromBytes(metadata, bufferManager, treeContext, children.get(0));
+        return bPlusNode.getLeftmostLeaf();
+    }
 
-        return null;
+    @Override
+    public BPlusNode getRightmostLeaf() {
+        assert (children.size() > 0);
+        BPlusNode bPlusNode = BPlusNode.fromBytes(metadata, bufferManager, treeContext,
+            children.get(children.size() - 1));
+        return bPlusNode.getRightmostLeaf();
     }
 
     // See BPlusNode.put.
     @Override
     public Optional<Pair<DataBox, Long>> put(DataBox key, RecordId rid) {
-        // TODO(proj2): implement
 
-        return Optional.empty();
+        Long targetChildren = children.get(doGet(key));
+        BPlusNode bPlusNode = BPlusNode.fromBytes(metadata, bufferManager, treeContext, targetChildren);
+
+        return bPlusNode.put(key, rid).flatMap(pair ->{
+            this.doPut(pair);
+            boolean split = keys.size() > (metadata.getOrder() * 2);
+            var resOpt = this.splitIfNeed(split);
+            //important: call sync()
+            sync();
+            return resOpt;
+        });
+    }
+
+    private Optional<Pair<DataBox, Long>> splitIfNeed(boolean split) {
+        int d = metadata.getOrder();
+        int keysSize = keys.size();
+        var resOpt = Optional.<Pair<DataBox, Long>>empty();
+        if (split) {
+            var rightNodeKeys = keys.subList(d + 1, keysSize);
+            var rightNodeChildren = children.subList(d + 1 , children.size());
+
+            var splitKey = keys.get(d);
+
+            keys = keys.subList(0, d);
+            children = children.subList(0, d + 1);
+
+            InnerNode rightNode = new InnerNode(metadata, bufferManager, rightNodeKeys,
+                rightNodeChildren, treeContext);
+            resOpt =  Optional.of(new Pair<>(splitKey, rightNode.getPage().getPageNum()));
+        }
+        return resOpt;
+    }
+
+    private void doPut(Pair<DataBox, Long> dataBoxLongPair) {
+        var databox = dataBoxLongPair.getFirst();
+        var pageNum = dataBoxLongPair.getSecond();
+        int bsIdx = Arrays.binarySearch(keys.toArray(), databox);
+        if(bsIdx >= 0) return;
+        //insertion point
+        int idx = -(bsIdx + 1);
+        keys.add(idx, databox);
+        children.add(idx + 1, pageNum);
     }
 
     // See BPlusNode.bulkLoad.
     @Override
     public Optional<Pair<DataBox, Long>> bulkLoad(Iterator<Pair<DataBox, RecordId>> data,
-            float fillFactor) {
-        // TODO(proj2): implement
+                                                  float fillFactor) {
+        BPlusNode rightmostLeaf = this.getRightmostLeaf();
+        Optional<Pair<DataBox, Long>> leafNodePair = rightmostLeaf.bulkLoad(data, fillFactor);
 
-        return Optional.empty();
+        // 1. leaf node do not split
+        // AND 2. data all insert into leaf node.
+        if(leafNodePair.isEmpty()) return Optional.empty();
+
+        keys.add(leafNodePair.get().getFirst());
+        children.add(leafNodePair.get().getSecond());
+
+        //important: fillFactor not used for inner node
+        //if overflow
+        boolean split = keys.size() >= metadata.getOrder() * 2;
+        //method or: when present return, else supplier.get()
+        var resOpt = splitIfNeed(split).or(() -> bulkLoad(data, fillFactor));
+        //important: call sync()
+        sync();
+        return resOpt;
     }
 
     // See BPlusNode.remove.
     @Override
     public void remove(DataBox key) {
-        // TODO(proj2): implement
-
-        return;
+        LeafNode leafNode = get(key);
+        leafNode.remove(key);
     }
 
     // Helpers /////////////////////////////////////////////////////////////////
@@ -154,6 +228,7 @@ class InnerNode extends BPlusNode {
     List<Long> getChildren() {
         return children;
     }
+
     /**
      * Returns the largest number d such that the serialization of an InnerNode
      * with 2d keys will fit on a single page.

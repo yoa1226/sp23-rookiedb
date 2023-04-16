@@ -23,6 +23,7 @@ import java.util.Objects;
 public class Schema {
     private List<String> fieldNames;
     private List<Type> fieldTypes;
+    //one record allocated byte size
     private short sizeInBytes;
 
     /**

@@ -31,7 +31,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * is done separately from the buffer manager's caching.
  *
  * Virtual page numbers are 64-bit integers (Java longs) assigned to data pages in the following format:
- *       partition number * 10^10 + n
+ *       partition number * 10^10 + n = partNum * 10_000_000_000 + n
  * for the n-th data page of the partition (indexed from 0). This particular format (instead of a simpler
  * scheme such as assigning the upper 32 bits to partition number and lower 32 to page number) was chosen
  * for ease of debugging (it's easier to read 10000000006 as part 1 page 6, than it is to decipher 4294967302).

@@ -51,6 +51,7 @@ abstract class BPlusNode {
      * leaf1.getLeftmostLeaf() would return leaf1.
      */
     public abstract LeafNode getLeftmostLeaf();
+    public abstract BPlusNode getRightmostLeaf();
 
     /**
      * n.put(k, r) inserts the pair (k, r) into the subtree rooted by n. There

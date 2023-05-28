@@ -1,11 +1,14 @@
 package edu.berkeley.cs186.database.query.join;
 
 import edu.berkeley.cs186.database.TransactionContext;
+import edu.berkeley.cs186.database.cli.parser.SimpleCharStream;
 import edu.berkeley.cs186.database.common.iterator.BacktrackingIterator;
 import edu.berkeley.cs186.database.query.JoinOperator;
 import edu.berkeley.cs186.database.query.QueryOperator;
 import edu.berkeley.cs186.database.table.Record;
+import edu.berkeley.cs186.database.table.Schema;
 
+import javax.print.attribute.standard.QueuedJobCount;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
@@ -62,16 +65,29 @@ public class BNLJOperator extends JoinOperator {
         // The next record to return
         private Record nextRecord;
 
+        private Schema leftSchema;
+        private Schema rightSchema;
+        private int block;
+
         private BNLJIterator() {
             super();
+            block  = numBuffers - 2 > 0 ? numBuffers: 1;
+
+            leftSchema = getLeftSource().getSchema();
+            rightSchema = getRightSource().getSchema();
+
             this.leftSourceIterator = getLeftSource().iterator();
             this.fetchNextLeftBlock();
+            if (leftBlockIterator.hasNext()) {
+                leftRecord = leftBlockIterator.next();
+            }
 
             this.rightSourceIterator = getRightSource().backtrackingIterator();
             this.rightSourceIterator.markNext();
             this.fetchNextRightPage();
 
             this.nextRecord = null;
+
         }
 
         /**
@@ -88,6 +104,10 @@ public class BNLJOperator extends JoinOperator {
          */
         private void fetchNextLeftBlock() {
             // TODO(proj3_part1): implement
+            if (leftSourceIterator.hasNext()) {
+                leftBlockIterator  = getBlockIterator(leftSourceIterator, leftSchema, block );
+                leftBlockIterator.markNext();
+            }
         }
 
         /**
@@ -103,6 +123,10 @@ public class BNLJOperator extends JoinOperator {
          */
         private void fetchNextRightPage() {
             // TODO(proj3_part1): implement
+            if (rightSourceIterator.hasNext()) {
+                rightPageIterator = QueryOperator.getBlockIterator(rightSourceIterator, rightSchema, 1);
+                rightPageIterator.markNext();
+            }
         }
 
         /**
@@ -115,7 +139,28 @@ public class BNLJOperator extends JoinOperator {
          */
         private Record fetchNextRecord() {
             // TODO(proj3_part1): implement
-            return null;
+            if(leftRecord == null) return null;
+
+            while (true) {
+                if (rightPageIterator.hasNext()) {
+                    Record rightRecord = rightPageIterator.next();
+                    //actual join
+                    if (compare(leftRecord, rightRecord) == 0)
+                        return leftRecord.concat(rightRecord);
+                } else if (leftBlockIterator.hasNext()) {
+                    leftRecord = leftBlockIterator.next();
+                    rightPageIterator.reset();
+                } else if (rightSourceIterator.hasNext()) {
+                    fetchNextRightPage();
+                    leftBlockIterator.reset();
+                } else if (leftSourceIterator.hasNext()) {
+                    fetchNextLeftBlock();
+                    rightSourceIterator.reset();
+                    fetchNextRightPage();
+                }else {
+                    return null;
+                }
+            }
         }
 
         /**

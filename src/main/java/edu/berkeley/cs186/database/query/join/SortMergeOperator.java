@@ -7,11 +7,16 @@ import edu.berkeley.cs186.database.query.MaterializeOperator;
 import edu.berkeley.cs186.database.query.QueryOperator;
 import edu.berkeley.cs186.database.query.SortOperator;
 import edu.berkeley.cs186.database.table.Record;
+import org.apache.commons.collections4.functors.FalsePredicate;
+import org.apache.commons.collections4.functors.NullIsExceptionPredicate;
 
+import javax.lang.model.util.ElementScanner6;
+import java.lang.reflect.Member;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.UUID;
 
 public class SortMergeOperator extends JoinOperator {
     public SortMergeOperator(QueryOperator leftSource,
@@ -97,6 +102,14 @@ public class SortMergeOperator extends JoinOperator {
         private Record nextRecord;
         private Record rightRecord;
         private boolean marked;
+        private int leftIdx ;
+        private int rightIdx ;
+        private int cnt1 = 1;
+        private int cnt2 = 1;
+        private int cnt3 = 1;
+        private int cnt4 = 0;
+
+        private boolean done;
 
         private SortMergeIterator() {
             super();
@@ -107,6 +120,8 @@ public class SortMergeOperator extends JoinOperator {
             if (leftIterator.hasNext() && rightIterator.hasNext()) {
                 leftRecord = leftIterator.next();
                 rightRecord = rightIterator.next();
+                this.leftIdx = getLeftColumnIndex();
+                this.rightIdx = getRightColumnIndex();
             }
 
             this.marked = false;
@@ -139,8 +154,66 @@ public class SortMergeOperator extends JoinOperator {
          * or null if there are no more records to join.
          */
         private Record fetchNextRecord() {
+            if(done) return null;
             // TODO(proj3_part1): implement
-            return null;
+            var leftCol = leftRecord.getValue(leftIdx);
+            var rightCol = rightRecord.getValue(rightIdx);
+            int cmp = leftCol.compareTo(rightCol);
+            while (true) {
+                //left bigger
+                if(cmp > 0){
+                    if (rightIterator.hasNext()) {
+                        rightRecord = rightIterator.next();
+                        rightCol = rightRecord.getValue(rightIdx);
+                        cmp = leftCol.compareTo(rightCol);
+                    }else  {
+                        done = true;
+                        return null;
+                    }
+                    //right bigger
+                } else if (cmp < 0) {
+                    if (leftIterator.hasNext()) {
+                        if (marked) {
+                            rightIterator.reset();
+                            marked = false;
+                        }
+                        if (rightIterator.hasNext()) {
+                            rightRecord = rightIterator.next();
+                            rightCol = rightRecord.getValue(rightIdx);
+                        }else {
+                            done = true;
+                            return null;
+                        }
+                        leftRecord = leftIterator.next();
+                        leftCol = leftRecord.getValue(leftIdx);
+                        cmp = leftCol.compareTo(rightCol);
+                    } else {
+                        done = true;
+                        return null;
+                    }
+                    //equal
+                }else {
+                    var joinRecord = leftRecord.concat(rightRecord);
+                    if (!marked) {
+                        rightIterator.markPrev();
+                        marked = true;
+                    }
+                    if (rightIterator.hasNext()) {
+                        rightRecord = rightIterator.next();
+                    }else {
+                        if(leftIterator.hasNext()){
+                            leftRecord = leftIterator.next();
+                            rightIterator.reset();
+                            rightRecord = rightIterator.next();
+                        }else {
+                            done = true;
+                            return joinRecord;
+                        }
+                    }
+                    return joinRecord;
+                }
+
+            }
         }
 
         @Override
